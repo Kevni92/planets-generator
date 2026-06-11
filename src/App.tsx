@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ExportFunctions, initializeScene } from "./utils/scene";
+import { ExportFunctions, SceneOptions, initializeScene } from "./utils/scene";
 import { PlanetFeatures, generatePlanetFeatures } from "./utils/planet-features";
 import { InfoRow } from "./components/info-row";
 import { Separator } from "./components/separator";
@@ -7,7 +7,7 @@ import { StyledButton } from "./components/styled-button";
 
 function App() {
     const CAMERA_VIEWS = {
-        DEFAULT: "Horizon View", //Button label
+        DEFAULT: "Horizon View",
         CLOSEUP: "Standard View",
     };
     const [planetInfo, setPlanetInfo] = useState(null);
@@ -33,11 +33,7 @@ function App() {
             setbuttonsLoading(false);
         };
 
-        //Reset Camera Orientation if necessary
         if (cameraView !== CAMERA_VIEWS.DEFAULT) {
-            const callback = () => {
-                setbuttonsLoading(false);
-            };
             sceneFunctions?.moveCameraDefault();
             setCameraView(CAMERA_VIEWS.DEFAULT);
         }
@@ -47,7 +43,18 @@ function App() {
     useEffect(() => {
         const canvas = document.getElementById("myThreeJsCanvas");
         if (canvas) {
-            const initializedCameraFunctions = initializeScene(canvas, setPlanetInfo, () => setbuttonsLoading(false));
+            const params = new URLSearchParams(window.location.search);
+            const options: SceneOptions = {
+                exportMode: params.get('export') === '1',
+                planetType: params.get('type')?.toUpperCase() || undefined,
+                size: params.get('size') ? parseInt(params.get('size')!) : undefined,
+            };
+            const initializedCameraFunctions = initializeScene(
+                canvas,
+                setPlanetInfo,
+                () => setbuttonsLoading(false),
+                options
+            );
             setSceneFunctions(initializedCameraFunctions);
         }
     }, []);

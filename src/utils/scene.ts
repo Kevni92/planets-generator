@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import gsap from 'gsap';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-import { createSpace } from '../elements/space';
 import { addNewPlanetAndSpaceToScene } from './planet-builder';
-import Stats from 'stats.js'
 import { PlanetInfo } from './planet-types';
+
+export interface SceneOptions {
+  exportMode?: boolean;
+  planetType?: string;
+  size?: number;
+}
 
 export interface ExportFunctions {
   moveCameraDefault: Function,
@@ -12,8 +16,9 @@ export interface ExportFunctions {
   generateNewPlanet: Function
 }
 
-const initializeCamera = (renderer: THREE.WebGLRenderer) => {
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+const initializeCamera = (renderer: THREE.WebGLRenderer, exportMode: boolean, size?: number) => {
+  const aspect = exportMode && size ? 1 : window.innerWidth / window.innerHeight;
+  const camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enablePan = false
   controls.enableDamping = true;
@@ -23,79 +28,112 @@ const initializeCamera = (renderer: THREE.WebGLRenderer) => {
   return { camera, controls }
 }
 
-const initializeRenderer = (canvas: HTMLElement) => {
+const initializeRenderer = (canvas: HTMLElement, exportMode: boolean, size?: number) => {
   const renderer = new THREE.WebGLRenderer({
-    canvas, antialias: true,
+    canvas,
+    antialias: true,
+    alpha: exportMode,
+    preserveDrawingBuffer: exportMode,
   })
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
+  const w = exportMode && size ? size : window.innerWidth;
+  const h = exportMode && size ? size : window.innerHeight;
+  renderer.setSize(w, h);
+  if (exportMode) {
+    renderer.setClearColor(0x000000, 0);
+  }
+  if (!exportMode) {
+    document.body.appendChild(renderer.domElement);
+  }
   return renderer
 }
 
 let currentCleanupFn: () => void
 let currentAnimateFn: () => void
 
-export const initializeScene = (canvas: HTMLElement, setPlanetInfo: Function, callback: () => void = () => { }) => {
+export const initializeScene = (
+  canvas: HTMLElement,
+  setPlanetInfo: Function,
+  callback: () => void = () => {},
+  options: SceneOptions = {}
+) => {
+  const { exportMode = false, planetType, size } = options;
 
-  const renderer = initializeRenderer(canvas)
+  const renderer = initializeRenderer(canvas, exportMode, size)
   const scene = new THREE.Scene()
-  const { camera, controls } = initializeCamera(renderer)
+  const { camera, controls } = initializeCamera(renderer, exportMode, size)
 
-  const moveCameraCloseup = (callback = () => { }) => {
+  if (exportMode) {
+    camera.position.set(0, 0, 5);
+  }
+
+  const moveCameraCloseup = (cb = () => { }) => {
     controls.enabled = false
     gsap.to(camera.position, { x: 0, y: 0, z: 2.5, duration: 1.5, ease: 'power4.out' });
     gsap.to(controls.target, {
       x: 2.5, y: 0, z: 0, duration: 1.5, ease: 'power4.out', onComplete: () => {
-        callback()
+        cb()
       }
     });
   }
 
-  const moveCameraDefault = (callback = () => { }) => {
+  const moveCameraDefault = (cb = () => { }) => {
     controls.enabled = false
     gsap.to(camera.position, { x: 0, y: 0, z: 5, duration: 1.5, ease: 'power4.out' });
     gsap.to(controls.target, {
       x: 0, y: 0, z: 0, duration: 1.5, ease: 'power4.out', onComplete: () => {
-        callback()
+        cb()
         controls.enabled = true
       }
     })
   }
 
-  const doZoomShotWithCamera = (callback: () => void = () => { }) => {
+  const doZoomShotWithCamera = (cb: () => void = () => { }) => {
     camera.position.set(-300, -300, 200);
-    moveCameraDefault(callback)
+    moveCameraDefault(cb)
   }
 
-  const gotoNewPlanet = (callback: () => void) => {
-
-    //Cleanup any preexisting scene elements
+  const gotoNewPlanet = (cb: () => void) => {
     currentCleanupFn ? currentCleanupFn() : null
-
-    //Add new elements to the scene
     const { planetInfo, planetAnimationFn, cleanupSceneFn } = addNewPlanetAndSpaceToScene(scene)
     currentCleanupFn = cleanupSceneFn
     currentAnimateFn = planetAnimationFn
     setPlanetInfo(planetInfo)
-
-    doZoomShotWithCamera(callback)
+    doZoomShotWithCamera(cb)
   }
 
   const animate = () => {
-
     if (currentAnimateFn) {
       currentAnimateFn()
     }
-
     controls.update()
     window.requestAnimationFrame(animate)
     renderer.render(scene, camera)
   }
 
-  gotoNewPlanet(callback)
+  if (exportMode) {
+    const { planetInfo, cleanupSceneFn, planetAnimationFn } = addNewPlanetAndSpaceToScene(
+      scene,
+      { type: planetType, exportMode: true }
+    );
+    currentCleanupFn = cleanupSceneFn;
+    currentAnimateFn = planetAnimationFn;
+    setPlanetInfo(planetInfo);
 
-  animate();
+    let frameCount = 0;
+    const exportAnimate = () => {
+      renderer.render(scene, camera);
+      frameCount++;
+      if (frameCount < 5) {
+        window.requestAnimationFrame(exportAnimate);
+      } else {
+        (window as any).__exportReady = true;
+      }
+    };
+    exportAnimate();
+  } else {
+    gotoNewPlanet(callback);
+    animate();
+  }
 
   return {
     moveCameraDefault,

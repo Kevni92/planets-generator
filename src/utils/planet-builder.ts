@@ -4,32 +4,38 @@ import { createLandmass } from "../elements/landmass";
 import { createSpace } from "../elements/space";
 import { PLANET_INFO_PROVIDERS, PlanetInfo } from "./planet-types";
 
-export const addNewPlanetAndSpaceToScene = (scene: THREE.Scene) => {
+export const addNewPlanetAndSpaceToScene = (
+  scene: THREE.Scene,
+  options?: { type?: string; exportMode?: boolean }
+) => {
+  const allTypes = Object.keys(PLANET_INFO_PROVIDERS);
+  const key =
+    options?.type && allTypes.includes(options.type)
+      ? options.type
+      : allTypes[Math.floor(Math.random() * allTypes.length)];
 
-  const randomPlanetTypeIndex = Math.floor(Math.random() * (Object.keys(PLANET_INFO_PROVIDERS).length));
-  const key = Object.keys(PLANET_INFO_PROVIDERS)[randomPlanetTypeIndex]
+  const planetInfo: PlanetInfo = PLANET_INFO_PROVIDERS[key as keyof typeof PLANET_INFO_PROVIDERS]();
 
-  // @ts-ignore: key warning
-  const planetInfo: PlanetInfo = PLANET_INFO_PROVIDERS[key]();
-
-  return { planetInfo, ...addPlanetAndSpaceToScene(planetInfo, scene) }
-
-}
+  return { planetInfo, ...addPlanetAndSpaceToScene(planetInfo, scene, options?.exportMode) };
+};
 
 
-export const addPlanetAndSpaceToScene = (info: PlanetInfo, scene: THREE.Scene) => {
+export const addPlanetAndSpaceToScene = (info: PlanetInfo, scene: THREE.Scene, exportMode = false) => {
   const { colorPalette, hasClouds, cloudColor } = info;
 
-  const space = createSpace()
   const basePlanet = createBasePlanet(colorPalette)
   const landmass = createLandmass(colorPalette)
-  
+
+  if (!exportMode) {
+    const space = createSpace()
+    scene.add(space)
+  }
+
   landmass.renderOrder = 1.0
-  scene.add(space)
   scene.add(basePlanet)
   scene.add(landmass)
 
-  let clouds: THREE.Mesh
+  let clouds: THREE.Mesh | undefined
 
   if (hasClouds && cloudColor) {
     clouds = createClouds(cloudColor)
@@ -41,13 +47,12 @@ export const addPlanetAndSpaceToScene = (info: PlanetInfo, scene: THREE.Scene) =
     cleanupSceneFn: () => {
       basePlanet.removeFromParent()
       landmass.removeFromParent()
-      space.removeFromParent()
       clouds?.removeFromParent()
     },
     planetAnimationFn: () => {
       basePlanet.rotation.y += .0004
       landmass.rotation.y += .0004
-      if (hasClouds) {
+      if (hasClouds && clouds) {
         clouds.rotation.y += .0002
       }
     }
